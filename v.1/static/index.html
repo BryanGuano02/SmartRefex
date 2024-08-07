@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Capture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f1218; /*#1a202c*/
+            color: #cbd5e0;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen">
+    <h1 class="text-3xl font-bold mb-4">Video Capture</h1>
+    <video id="video" width="640" height="480" autoplay class="border-4 border-gray-700 rounded mb-4"></video>
+    
+    <div id="controls" class="flex flex-col items-center">
+        <button id="startButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-2">Empezar</button>
+        <button id="resetButton" disabled class="bg-gray-500 text-white font-bold py-2 px-4 rounded mb-2">Reiniciar</button>
+        <div id="timer" class="text-2xl font-mono mt-4">00:00:00.000</div>
+    </div>
+    
+    <div id="results" class="mt-8 text-center">
+        <h2 class="text-2xl font-semibold mb-4">Prediction Results</h2>
+        <p class="mb-2"><strong>Class:</strong> <span id="class"></span></p>
+        <p class="mb-2"><strong>Probability:</strong> <span id="probability"></span></p>
+        <p class="mb-2"><strong>Lean Class:</strong> <span id="lean_class"></span></p>
+        <p class="mb-2"><strong>Lean Probability:</strong> <span id="lean_prob"></span></p>
+        <p class="mb-2"><strong>Hips Class:</strong> <span id="hips_class"></span></p>
+        <p class="mb-2"><strong>Hips Probability:</strong> <span id="hips_prob"></span></p>
+        <p class="mb-2"><strong>Advice:</strong> <span id="advice"></span></p>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const classSpan = document.getElementById('class');
+        const probabilitySpan = document.getElementById('probability');
+        const leanClassSpan = document.getElementById('lean_class');
+        const leanProbSpan = document.getElementById('lean_prob');
+        const hipsClassSpan = document.getElementById('hips_class');
+        const hipsProbSpan = document.getElementById('hips_prob');
+        const adviceSpan = document.getElementById('advice');
+        const startButton = document.getElementById('startButton');
+        const resetButton = document.getElementById('resetButton');
+        const timerElement = document.getElementById('timer');
+        
+        let capturing = false;
+        let startTime;
+        let timerInterval;
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                startCapture();
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error('Error accessing webcam: ' + err);
+            });
+
+        function captureFrame() {
+            if (!capturing) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            canvas.toBlob(blob => {
+                sendFrame(blob);
+            }, 'image/jpeg');
+        }
+
+        function sendFrame(blob) {
+            const formData = new FormData();
+            formData.append('file', blob, 'frame.jpg');
+            fetch('http://192.168.1.25:8000/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Prediction:', data);
+                updateResults(data);
+            })
+            .catch(error => {
+                console.error('Error sending frame: ', error);
+            });
+        }
+
+        function updateResults(data) {
+            classSpan.textContent = data.class;
+            probabilitySpan.textContent = data.probability;
+            leanClassSpan.textContent = data.lean_class;
+            leanProbSpan.textContent = data.lean_prob;
+            hipsClassSpan.textContent = data.hips_class;
+            hipsProbSpan.textContent = data.hips_prob;
+            adviceSpan.textContent = data.advice;
+        }
+
+        function startCapture() {
+            capturing = true;
+            startButton.disabled = true;
+            resetButton.disabled = false;
+            startTime = new Date().getTime();
+            timerInterval = setInterval(updateTimer, 10);
+            setInterval(captureFrame, 1000); // Captura un frame cada segundo
+        }
+
+        function resetCapture() {
+            capturing = false;
+            startButton.disabled = false;
+            resetButton.disabled = true;
+            clearInterval(timerInterval);
+            timerElement.textContent = "00:00:00.000";
+            classSpan.textContent = " ";
+            probabilitySpan.textContent = " ";
+            leanClassSpan.textContent = " ";
+            leanProbSpan.textContent = " ";
+            hipsClassSpan.textContent = " ";
+            hipsProbSpan.textContent = " ";
+            adviceSpan.textContent = " ";
+        }
+
+        function updateTimer() {
+            const currentTime = new Date().getTime();
+            const elapsedTime = currentTime - startTime;
+
+            const hours = Math.floor(elapsedTime / (1000 * 60 * 60));
+            const minutes = Math.floor((elapsedTime % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((elapsedTime % (1000 * 60)) / 1000);
+            const milliseconds = elapsedTime % 1000;
+
+            timerElement.textContent = 
+                String(hours).padStart(2, '0') + ':' +
+                String(minutes).padStart(2, '0') + ':' +
+                String(seconds).padStart(2, '0') + '.' +
+                String(milliseconds).padStart(3, '0');
+        }
+
+
+        startButton.addEventListener('click', startCapture);
+        resetButton.addEventListener('click', resetCapture);
+    </script>
+</body>
+</html>
